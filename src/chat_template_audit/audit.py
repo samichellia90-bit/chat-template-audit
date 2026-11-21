@@ -28,12 +28,19 @@ import json
 import os
 import re
 import sys
+from collections.abc import Iterable, Iterator
 from dataclasses import asdict, dataclass, field
 from fnmatch import fnmatch
 from pathlib import Path
-from typing import Iterable, Iterator, Optional
+from typing import Optional
 
-import tomllib
+try:  # tomllib is stdlib on 3.11+; tomli is the backport
+    import tomllib
+except ModuleNotFoundError:  # pragma: no cover - exercised only on 3.9/3.10
+    try:
+        import tomli as tomllib  # type: ignore[no-redef]
+    except ModuleNotFoundError:
+        tomllib = None  # type: ignore[assignment]
 
 __version__ = "0.2.0"
 
@@ -859,6 +866,8 @@ def _jinja_requirements(path: Path, text: str) -> Iterator[tuple[int, str, bool]
         return 1
 
     if name == "pyproject.toml":
+        if tomllib is None:  # no TOML parser on this interpreter (3.9/3.10 without tomli)
+            return
         try:
             data = tomllib.loads(text)
         except (tomllib.TOMLDecodeError, UnicodeDecodeError):
