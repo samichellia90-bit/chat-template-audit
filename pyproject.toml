@@ -1,0 +1,26 @@
+[project]
+name = "chat-template-audit"
+version = "0.1.0"
+description = "Static auditor for server-side template injection in LLM chat-template rendering"
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+authors = [{ name = "Sami Chellia" }]
+keywords = ["security", "ssti", "jinja2", "llm", "chat-template", "static-analysis"]
+dependencies = []
+
+[project.optional-dependencies]
+test = ["pytest>=7"]
+
+[project.scripts]
+chat-template-audit = "chat_template_audit.audit:main"
+
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+line-length = 120
