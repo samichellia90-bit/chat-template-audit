@@ -1,6 +1,29 @@
-"""chat-template-audit: a static check for template-injection risk in LLM chat-template rendering."""
+"""chat-template-audit: find LLM chat templates compiled by a non-sandboxed Jinja2 environment."""
 
-from chat_template_audit.audit import Finding, scan_file, scan_tree
+from chat_template_audit.audit import (
+    CHECK,
+    PIN,
+    REVIEW,
+    Finding,
+    Report,
+    __version__,
+    main,
+    render_json,
+    render_sarif,
+    render_text,
+    scan,
+)
 
-__all__ = ["Finding", "scan_file", "scan_tree"]
-__version__ = "0.1.0"
+__all__ = [
+    "CHECK",
+    "PIN",
+    "REVIEW",
+    "Finding",
+    "Report",
+    "__version__",
+    "main",
+    "render_json",
+    "render_sarif",
+    "render_text",
+    "scan",
+]

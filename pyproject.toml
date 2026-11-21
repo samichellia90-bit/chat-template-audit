@@ -1,16 +1,27 @@
 [project]
 name = "chat-template-audit"
-version = "0.1.0"
-description = "Static auditor for server-side template injection in LLM chat-template rendering"
+version = "0.2.0"
+description = "Static auditor that flags LLM chat templates compiled by a non-sandboxed Jinja2 environment"
 readme = "README.md"
 requires-python = ">=3.9"
 license = { text = "MIT" }
 authors = [{ name = "Sami Chellia" }]
-keywords = ["security", "ssti", "jinja2", "llm", "chat-template", "static-analysis"]
+keywords = ["security", "ssti", "jinja2", "llm", "chat-template", "static-analysis", "sast", "sarif"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Topic :: Security",
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+]
 dependencies = []
 
 [project.optional-dependencies]
-test = ["pytest>=7"]
+test = ["pytest>=7", "jinja2>=3.1.6"]
+
+[project.urls]
+Homepage = "https://github.com/samichellia90-bit/chat-template-audit"
+Issues = "https://github.com/samichellia90-bit/chat-template-audit/issues"
 
 [project.scripts]
 chat-template-audit = "chat_template_audit.audit:main"
@@ -24,3 +35,7 @@ where = ["src"]
 
 [tool.ruff]
 line-length = 120
+target-version = "py39"
+
+[tool.ruff.lint]
+extend-select = ["I"]

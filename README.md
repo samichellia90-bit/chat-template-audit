@@ -1,101 +1,120 @@
 <div align="center">
 
+<img src="assets/logo.svg" width="110" alt="chat-template-audit logo">
+
 # chat-template-audit
 
-**A static check for one specific remote-code-execution pattern: an LLM's
-`chat_template` rendered with a non-sandboxed Jinja2 environment.**
+**Find the one bug that turns "load a chat model" into "run the model author's code":
+a `chat_template` compiled by a non-sandboxed Jinja2 environment.**
 
 [![tests](https://github.com/samichellia90-bit/chat-template-audit/actions/workflows/tests.yml/badge.svg)](https://github.com/samichellia90-bit/chat-template-audit/actions/workflows/tests.yml)
 ![python](https://img.shields.io/badge/python-3.9%2B-blue)
 ![license](https://img.shields.io/badge/license-MIT-green)
-![deps](https://img.shields.io/badge/dependencies-none-brightgreen)
+![dependencies](https://img.shields.io/badge/runtime%20deps-none-brightgreen)
+![output](https://img.shields.io/badge/output-text%20%7C%20json%20%7C%20SARIF-8957e5)
+
+<img src="assets/demo.gif" width="780" alt="chat-template-audit flags the vulnerable release of llama-cpp-python and clears the patched one">
 
 </div>
 
 ## The bug class
 
-A modern chat model ships a **`chat_template`** — a Jinja2 string — inside its
-`tokenizer_config.json` (or, for GGUF, in `tokenizer.chat_template` metadata). A
-program that builds a prompt from it compiles that string:
+A chat model ships its prompt format as a **Jinja2 template**: `chat_template` in
+`tokenizer_config.json`, a `chat_template.jinja` file, or `tokenizer.chat_template`
+in GGUF metadata. Code that turns messages into a prompt compiles that string:
 
 ```python
 from jinja2 import Environment
 prompt = Environment().from_string(tokenizer.chat_template).render(messages=msgs)
 ```
 
-When the model comes from an untrusted source — any public hub — that template
-is **attacker-controlled Jinja source**. With a plain `Environment`, a crafted
-template reaches Python internals and executes code:
+When the model comes from an untrusted source — any public hub — that template is
+**attacker-controlled Jinja**. A plain `Environment` or `Template` runs it with no
+sandbox, so a crafted template reaches Python and executes code:
 
 ```jinja
 {{ cycler.__init__.__globals__.os.popen('id').read() }}
 ```
 
-So the render **must** use a Jinja sandbox: `SandboxedEnvironment` or
-`ImmutableSandboxedEnvironment`, on a recent Jinja (the 3.1.5–3.1.6 line closed
-the known sandbox escapes, e.g. CVE-2024-56326 and CVE-2025-27516). Hugging Face
-`transformers`, for instance, both sandboxes the render and refuses to run on
-`jinja2 < 3.1.6`.
+Just loading and using the model is enough. This is exactly how **CVE-2024-34359**
+(llama-cpp-python) and **CVE-2024-2952** (LiteLLM) worked. The fix is a Jinja
+**sandbox** — `ImmutableSandboxedEnvironment` — on `jinja2 >= 3.1.6` (earlier
+sandboxes have their own escapes: CVE-2024-56326, CVE-2025-27516).
 
-`chat-template-audit` finds the render sites that do **not** take that
-precaution.
+`chat-template-audit` finds the render sites that skip that precaution.
 
-## What it does
+## Validation — it catches the real CVEs, and clears the fixes
 
-It scans a Python tree. For every Jinja render site (`.from_string(`,
-`Environment(`, `Template(`) it reports a verdict:
+Run against the published vulnerable and patched releases, with nothing tuned to them:
 
-| verdict | meaning |
-|---|---|
-| **`REVIEW`** | render site **not** sandboxed, in a file that also reads a model-supplied template (`chat_template` / `tokenizer_config` / GGUF `metadata[...]`). Review by hand. |
-| `sandbox` | the file builds a Jinja sandbox; the render is most likely safe. |
-| `render`  | a render site with no model-template source nearby. |
+| Package | Release | `chat-template-audit` says | |
+|---|---|---|---|
+| llama-cpp-python | `v0.2.71` (CVE-2024-34359) | **2 × REVIEW** — `jinja2.Environment` on `metadata["tokenizer.chat_template"]` | 🔴 |
+| llama-cpp-python | `v0.2.72` (patched) | 0 REVIEW · 4 sandboxed render sites · 1 PIN (`jinja2>=2.11.3`) | 🟢 |
+| LiteLLM | `v1.34.41` (CVE-2024-2952) | **1 × REVIEW** — `Environment().from_string(chat_template)` in `hf_chat_template` | 🔴 |
+| LiteLLM | `v1.34.42` (patched) | 0 REVIEW · sandboxed · 2 PIN (jinja pinned below 3.1.6) | 🟢 |
 
-It is a **heuristic linter, not a proof of exploitability.** It points a human at
-the lines worth reading; reachability decides whether a `REVIEW` is a real bug.
+On current releases of transformers, vLLM, SGLang, LiteLLM, text-generation-webui and
+xinference, the model-supplied render sites are sandboxed and the tool reports them as
+`SANDBOX`, not `REVIEW` — the ecosystem converged on `ImmutableSandboxedEnvironment`
+after these CVEs. The value now is keeping it that way and catching the next regression.
 
 ## Install & use
 
 ```bash
-pip install -e .
-chat-template-audit path/to/repo            # human-readable
-chat-template-audit path/to/repo --json     # machine-readable
+pip install -e .                      # zero runtime dependencies
+
+chat-template-audit path/to/repo      # human-readable, colored
+chat-template-audit --format sarif .  # upload to GitHub code scanning
+chat-template-audit --format json .   # machine-readable
+chat-template-audit --strict .        # fail on CHECK and PIN too, not only REVIEW
 ```
 
-Exit code is `1` when any `REVIEW` finding exists, so it drops into CI or a
-pre-commit hook. Zero third-party dependencies.
+Exit code is `1` when a `REVIEW` is found (`--strict`: also `CHECK`/`PIN`), so it drops
+straight into CI or a pre-commit hook. Add `# chat-template-audit: ignore` on a render
+line to suppress a reviewed false positive.
 
-Example on the two fixtures in this repo:
+## What the verdicts mean
 
-```
-=== tests/fixtures/vulnerable_lib ===
-  [REVIEW] model.py:8  template = Environment(loader=BaseLoader).from_string(chat_template)   {untrusted-template-in-file}
+| verdict | exit≠0 | meaning |
+|---|:--:|---|
+| **`REVIEW`** | yes | a **model-supplied** template is compiled by a **non-sandboxed** environment. The bug. |
+| **`CHECK`** | `--strict` | model-supplied template, but the environment is resolved only partly (sandboxed on some paths, or built elsewhere). Read it. |
+| **`PIN`** | `--strict` | a sandbox is used, but the project's `jinja2` requirement admits a version `< 3.1.6`, whose sandbox has known escapes. |
+| `SANDBOX` | no | compiled in a Jinja sandbox. Good. |
+| `PLAIN` | no | non-sandboxed, but the template is not traced to a model (e.g. a developer constant). |
+| `UNKNOWN` | no | render site whose environment could not be resolved and whose template is not model-traced. |
 
-=== tests/fixtures/safe_lib ===
-  [sandbox] model.py:9  template = env.from_string(chat_template)   {sandboxed,untrusted-template-in-file}
-```
+Each `REVIEW`/`CHECK` points at the render site **and** the line where the model-supplied
+value enters, even across files.
 
-## Why `REVIEW` still needs a human
+## How it works
 
-The flag is a code smell, not a verdict. A render can be non-sandboxed **and**
-read a model template, yet still be safe if the untrusted string never reaches
-the compiler. A real example: `guidance` renders `chat_template` with a plain
-`Environment`, but its loader keeps only template strings that match a built-in
-it already trusts and drops everything else, so an attacker's template is never
-compiled. The tool marks it `REVIEW`; a human reads the data flow and clears it.
-That is the intended workflow.
+Pure static analysis — the scanned code is parsed with `ast`, never imported or executed.
 
-## Scope and limitations
+- **Resolution.** jinja2 imports, aliases (`import jinja2 as j`), `jinja2.sandbox`
+  attribute chains, star-imports, subclasses of `Environment`/`SandboxedEnvironment`,
+  module-level and `self` environments, and factory functions are resolved — **across the
+  modules of the scanned tree**, so a sandbox built in one file is recognised in another.
+- **Taint.** A template is *model-supplied* when it derives from a name, attribute, dict
+  key or file name containing `chat_template` / `tokenizer_config`. The taint follows
+  assignments, `self` attributes, return values and arguments through a fixed-point pass
+  over the call graph — the shape of CVE-2024-34359, where the template crosses a
+  constructor and a `self` attribute, is caught.
+- **Version pins** are read from `pyproject.toml` (PEP 621 and Poetry), `requirements*.txt`,
+  `setup.py` and `setup.cfg`.
 
-- Sandbox detection is **file-level**: a file that builds a sandbox anywhere is
-  treated as sandboxed at every render site in it. This can hide a plain
-  `Environment` that sits next to a sandboxed one; cross-check large files.
-- It reasons about **where the template is compiled**, not where its string
-  comes from. Confirm the untrusted source reaches the render before reporting
-  anything.
+Rules: `CTA001` (REVIEW), `CTA002` (CHECK), `CTA003` (PIN) — emitted with CWE-1336 in SARIF.
+
+## Limitations
+
+- Static analysis: dynamic `getattr`, config-driven class loading or `eval` can hide a
+  render site. A `REVIEW` is a lead a human confirms, not a proven exploit — reachability
+  decides it (e.g. a library may render a model template with a plain `Environment` yet
+  drop any untrusted string before it reaches the compiler).
 - Python only. Templates compiled in other languages are out of scope.
-- **For defensive use and responsible disclosure only.** If you confirm a real
-  issue in someone else's project, report it privately to the maintainers.
+- **For defensive use and responsible disclosure only.** If you confirm a real issue in a
+  project you do not own, report it privately to its maintainers.
 
 ## License
 

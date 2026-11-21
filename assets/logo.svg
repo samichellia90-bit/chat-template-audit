@@ -1,0 +1,18 @@
+<svg width="128" height="128" viewBox="0 0 128 128" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="chat-template-audit">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="0" y2="128" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#2d333b"/>
+      <stop offset="1" stop-color="#1b1f24"/>
+    </linearGradient>
+  </defs>
+  <rect x="4" y="4" width="120" height="120" rx="26" fill="url(#g)" stroke="#444c56" stroke-width="2"/>
+  <!-- shield -->
+  <path d="M64 24 L96 34 V62 C96 82 82 96 64 104 C46 96 32 82 32 62 V34 Z"
+        fill="#22272e" stroke="#3fb950" stroke-width="4" stroke-linejoin="round"/>
+  <!-- jinja braces + template cursor, the thing being guarded -->
+  <text x="64" y="72" font-family="Cascadia Mono, Consolas, monospace" font-size="30" font-weight="700"
+        text-anchor="middle" fill="#3fb950" letter-spacing="-1">{{ }}</text>
+  <!-- check mark overlaid -->
+  <path d="M51 63 L60 73 L80 50" fill="none" stroke="#56d364" stroke-width="7"
+        stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
